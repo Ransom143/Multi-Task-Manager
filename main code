@@ -1,0 +1,624 @@
+""" 
+It is a command line interface multi task manager 
+It consists a Task Manager, Budget Tracker, Guessing Game all in a single application
+It's written in python
+sqlite3, json file is Used for file handling
+The code is well structured 
+good error handling and command line color theme
+"""
+import os
+import sys
+import json
+import time
+import random
+import sqlite3
+from datetime import date
+from colorama import Fore, init
+init(autoreset=True)
+def clear_terminal():
+    if os.name == "nt":
+        os.system("cls")
+    else:
+        os.system("clear")
+#task manager
+class Database:
+    def __init__(self):
+        self.connection = sqlite3.connect('task_manager.db')
+        self.create_tables()
+    def create_tables(self):
+        with self.connection:
+            self.connection.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    password TEXT NOT NULL
+                )''')
+            self.connection.execute('''
+                CREATE TABLE IF NOT EXISTS tasks (
+                    user_id TEXT,
+                    task TEXT,
+                    priority INTEGER DEFAULT 0,
+                    deadline TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )''')
+    def save_user(self,user_id,password):
+        with self.connection:
+            self.connection.execute("""INSERT INTO users (id, password) 
+                                    VALUES (?, ?)""",(user_id,password))
+    def get_user(self,user_id):
+        cursor=self.connection.cursor()
+        cursor.execute("""SELECT password FROM users 
+                       WHERE id = ?""",(user_id,))
+        return cursor.fetchone()
+    def save_task(self,user_id,task,priority=0,deadline=None):
+        with self.connection:
+            self.connection.execute("""INSERT INTO tasks (user_id, task, priority, deadline)
+                                     VALUES (?, ?, ?, ?)""", 
+                                    (user_id,task,priority,deadline))
+    def get_tasks(self,user_id):
+        cursor=self.connection.cursor()
+        cursor.execute("""SELECT task, priority, deadline FROM tasks 
+                       WHERE user_id = ? ORDER BY priority DESC""",(user_id,))
+        return cursor.fetchall()
+    def remove_task(self,user_id,task):
+        with self.connection:
+            self.connection.execute("""DELETE FROM tasks 
+                                    WHERE user_id = ? AND task = ?""",(user_id,task))
+    def update_task_priority(self,user_id,task,priority):
+        with self.connection:
+            self.connection.execute("""UPDATE tasks SET priority = ? 
+                                    WHERE user_id = ? AND task = ?""",(priority, user_id, task))
+    def mark_task_done(self,user_id,task):
+        with self.connection:
+            self.connection.execute("""UPDATE tasks SET task = ? 
+                                    WHERE user_id = ? AND task = ?""",(task+" (Done)",user_id, task))
+db=Database()
+class Authentication:
+    def interface(self):
+        clear_terminal()
+        print(Fore.MAGENTA+"\t___main___")
+        choice=input(Fore.CYAN+"Login or create account?: (login, create):\nenter-----> ")
+        if choice.lower()=="login":
+            return self.login()
+        elif choice.lower()=="create":
+            return self.create()
+        else:
+            return self.interface()
+    def login(self):
+        clear_terminal()
+        print(Fore.MAGENTA+"\n\t___login___")
+        user_id=input(Fore.CYAN+"Enter the ID: ")
+        password=input(Fore.CYAN+"Enter the password: ")
+        user=db.get_user(user_id)
+        if user and user[0]==password:
+            print(Fore.GREEN+"Login successful")
+            time.sleep(1)
+            clear_terminal()
+            print(Fore.MAGENTA+"\t___welcome to the task manager___")
+            return main(user_id)
+        else:
+            print(Fore.RED+"Invalid ID or password, please try again")
+            time.sleep(1)
+            return self.interface()
+    def create(self):
+        clear_terminal()
+        print(Fore.MAGENTA+"\t___create account___")
+        print(Fore.BLUE+"Please use characters, alphabets, numbers only")
+        user_id=input(Fore.CYAN+"Enter the ID: ")
+        if not user_id.isalnum():
+            print(Fore.RED+"Invalid input, please try again: (please use characters, alphabets, numbers only)")
+            time.sleep(1)
+            return self.create()
+        password=input(Fore.CYAN+"Enter the password: ")
+        if not password.isalnum():
+            print(Fore.RED+"Invalid input, please try again: (please use characters, alphabets, numbers only)")
+            time.sleep(1)
+            return self.create()
+        db.save_user(user_id, password)
+        print(Fore.GREEN+"Account created successfully")
+        time.sleep(1)
+        return self.login()
+class Tasks(Authentication):
+    def __init__(self,user_id):
+        self.id=user_id
+    def include(self):
+        clear_terminal()
+        print(Fore.MAGENTA+"\t___include tasks:___")
+        print(Fore.LIGHTBLACK_EX+"**use 'end' to stop entering**\n")
+        while True:
+            task=input(Fore.CYAN+"Enter the task: ").lower()
+            if task=="end":
+                clear_terminal()
+                self.display()
+                print(" ")
+                break
+            else:
+                deadline=input(Fore.LIGHTCYAN_EX+"Enter the deadline (YYYY-MM-DD) or press Enter to skip: ")
+                db.save_task(self.id,task,deadline=deadline)
+        return main(self.id)
+    def remove(self):
+        clear_terminal()
+        self.display()
+        print(" ")
+        try:
+            index=int(input(Fore.CYAN+"Input the task index number to remove or type 0 to cancel: ")) - 1
+            tasks=db.get_tasks(self.id)
+            if 0 <= index < len(tasks):
+                task_to_remove=tasks[index][0]
+                db.remove_task(self.id,task_to_remove)
+                print(Fore.GREEN+f"{task_to_remove}: Task removed successfully")
+            elif index==-1:
+                print(Fore.RED+"Operation cancelled.")
+                time.sleep(1)
+            else:
+                print(Fore.RED+"Invalid index.")
+                time.sleep(1)
+        except ValueError:
+            print(Fore.RED+"Please enter a valid number.")
+        time.sleep(1)
+        return main(self.id)
+    def display(self):
+        clear_terminal()
+        tasks=db.get_tasks(self.id)
+        if not tasks:
+            print(Fore.RED+"No tasks remaining")
+        else:
+            print(Fore.MAGENTA+"Tasks:")
+            for index,(task, priority, deadline) in enumerate(tasks,start=1):
+                deadline_str=f" (Deadline: {deadline})" if deadline else ""
+                print(Fore.LIGHTBLACK_EX+f"{index}---> {task} (Priority: {priority}){deadline_str}")
+    def mark(self):
+        self.display()
+        print(" ")
+        try:
+            index=int(input(Fore.CYAN+"Input the task index number to mark as done: "))-1
+            tasks=db.get_tasks(self.id)
+            if 0 <= index < len(tasks):
+                task_to_mark=tasks[index][0]
+                db.mark_task_done(self.id,task_to_mark)
+                print(Fore.GREEN+"Task marked as done successfully.")
+                time.sleep(1)
+            else:
+                print(Fore.RED+"Invalid index.")
+                time.sleep(1)
+        except ValueError:
+            print(Fore.RED+"Please enter a valid number.")
+            time.sleep(1)
+        time.sleep(1)
+        return main(self.id)
+    def prioritize(self):
+        clear_terminal()
+        self.display()
+        print(" ")
+        try:
+            index=int(input(Fore.CYAN+"Input the task index number to prioritize: "))-1
+            tasks=db.get_tasks(self.id)
+            if 0 <= index < len(tasks):
+                priority_level=int(input(Fore.LIGHTBLACK_EX+"Enter new priority level (1-5): "))
+                if 1 <= priority_level <= 5:
+                    task_to_prioritize=tasks[index][0]
+                    db.update_task_priority(self.id,task_to_prioritize,priority_level)
+                    print(Fore.GREEN+"Task priority updated successfully.")
+                else:
+                    print(Fore.RED+"Priority level must be between 1 and 5.")
+                    time.sleep(1)
+            else:
+                print(Fore.RED+"Invalid index.")
+                time.sleep(1)
+        except ValueError:
+            print(Fore.RED+"Please enter a valid number.")
+        time.sleep(1)
+        return main(self.id)
+    def search(self):
+        clear_terminal()
+        try:
+            search_term=input(Fore.CYAN+"Enter the keyword to search for tasks: ").lower()
+            tasks=db.get_tasks(self.id)
+            matching_tasks=[task for task in tasks if search_term in task[0].lower()]
+            if not matching_tasks:
+                print(Fore.RED+"No tasks found matching the keyword.")
+                time.sleep(1)
+            else:
+                print(Fore.MAGENTA+"Matching tasks:")
+            for index,(task,priority,deadline) in enumerate(matching_tasks,start=1):
+                deadline_str=f" (Deadline: {deadline})" if deadline else ""
+                print(f"{index}---> {task} (Priority: {priority}){deadline_str}")
+            a=int(input(Fore.CYAN+"\nenter 0 for main: "))
+            if a==0:
+                return main(self.id)
+            else:
+                print(Fore.RED+"invalid input")
+        except:
+            print(Fore.RED+"invalid input")
+def main(user_id):
+    task_manager=Tasks(user_id)
+    while True:
+        task_manager.display()
+        print(" ")
+        print(Fore.MAGENTA+"\nChoose the options:")
+        print(Fore.BLUE+"1--->Include a new task")
+        print(Fore.BLUE+"2--->Remove a task")
+        print(Fore.BLUE+"3--->Mark a task")
+        print(Fore.BLUE+"4--->Prioritize a task")
+        print(Fore.BLUE+"5--->search a task")
+        print(Fore.BLUE+"6--->Exit")
+        try:
+            choice=int(input(Fore.CYAN+"\nSelect a choice:\nenter-----> "))
+            if choice==1:
+                return task_manager.include()
+            elif choice==2:
+                return task_manager.remove()
+            elif choice==3:
+                return task_manager.mark()
+            elif choice==4:
+                return task_manager.prioritize()
+            elif choice==5:
+                return task_manager.search()
+            elif choice==6:
+                main_start()
+            else:
+                print(Fore.RED+"Invalid input, please choose again")
+                time.sleep(1)
+        except ValueError:
+            print(Fore.RED+"Please enter a valid number.")
+            time.sleep(1)
+def start_1():
+    Authentication().interface()
+#number guessing game
+n=0
+score=0
+alphabets=[]
+fruits=[]
+name=""
+fails=0
+def start_screen():
+    global name
+    print(Fore.MAGENTA+"\twelcome to the game")
+    print(Fore.BLUE+"         .....loading.....")
+    time.sleep(1)
+    clear_terminal()
+    name=input(Fore.CYAN+"enter your name:").strip().lower()
+    clear_terminal()
+    level_selection()
+def level_selection():
+    try:
+        print(Fore.MAGENTA+"\tselect game mode")
+        print(Fore.BLUE+"1.easy")
+        print(Fore.BLUE+"2.medium")
+        print(Fore.BLUE+"3.hard")
+        choice=int(input(Fore.CYAN+"enter choice: "))
+        global n,alphabets,fruits
+        if choice==1:
+            n=1
+            alphabets=["A","B"]
+            fruits=["kiwi","apple"]
+            clear_terminal()
+            print(Fore.MAGENTA+"\tlevel--->easy")
+            time.sleep(2)
+            start()
+        elif choice==2:
+            n=2
+            alphabets=["A","B","C"]
+            fruits=["kiwi","apple","mango"]
+            clear_terminal()
+            print(Fore.MAGENTA+"level--->medium")
+            time.sleep(2)
+            start()
+        elif choice==3:
+            n=3
+            alphabets=["A","B","C","D"]
+            fruits=["kiwi","apple","mango","orange"]
+            clear_terminal()
+            print(Fore.MAGENTA+"level--->hard")
+            time.sleep(2)
+            start()
+        else:
+            print(Fore.RED+"invalid choice")
+            time.sleep(1)
+            start_screen()
+    except ValueError:
+        print(Fore.RED+"invalid input choice")
+        time.sleep(1)
+        start_screen()
+class game:
+    clear_terminal()
+    def level_1():
+        global score,fails
+        try:
+            print(Fore.MAGENTA+"\tlevel--->1")
+            print(Fore.BLUE+"\tguess the number in 3 chances")
+            time.sleep(2)
+            a=0
+            while a<3:
+                clear_terminal()
+                print(Fore.MAGENTA+f"\tguess between 0 to {n}")
+                print(Fore.BLUE+f"score={score}")
+                num=int(input(Fore.CYAN+f"{a+1}-->enter the choice: "))
+                g_num=random.randint(0,n)
+                if num==g_num:
+                    print(Fore.GREEN+"******correct guess********")
+                    print(" ")
+                    score+=1
+                    time.sleep(1)
+                    clear_terminal()
+                else:
+                    print(Fore.RED+"try again")
+                    fails+=1
+                    time.sleep(1)
+                    clear_terminal()
+                a=a+1
+        except ValueError:
+            print(Fore.GREEN+"please enter a valid number")
+            time.sleep(1)
+            game.level_1()
+    def level_2():
+        global score,fails
+        try:
+            print(Fore.MAGENTA+"\tlevel--->2")
+            print(Fore.BLUE+"\tguess the alphabets in 3 chances")
+            time.sleep(2) 
+            b=0
+            while b<3:
+                clear_terminal()
+                print(Fore.MAGENTA+f"\tguess between {alphabets}")
+                print(Fore.BLUE+f"score={score}")
+                alpha=input(Fore.CYAN+f"{b+1}-->enter the choice: ").upper()
+                g_alpha=random.choice(alphabets)
+                if alpha.upper()==g_alpha.upper():
+                    print(Fore.GREEN+"******correct guess********")
+                    print(" ")
+                    score+=1
+                    time.sleep(1)
+                    clear_terminal()
+                else:
+                    print(Fore.RED+"try again")
+                    fails+=1
+                    time.sleep(1)
+                    clear_terminal()
+                b=b+1
+        except ValueError:
+            print(Fore.RED+"please enter a valid character")
+            time.sleep(1)
+            game.level_2()
+    def level_3():
+        global score,fails
+        try:
+            print(Fore.MAGENTA+"\tlevel--->3")
+            print(Fore.BLUE+"\tguess the fruits in  chances")
+            time.sleep(2)
+            c=0
+            while c<3:
+                clear_terminal()
+                print(Fore.MAGENTA+f"\tguess between {fruits}")
+                print(Fore.BLUE+f"score={score}")
+                fruit=input(Fore.CYAN+f"{c+1}-->enter the choice: ").upper()
+                g_fruit=random.choice(fruits)
+                if fruit.upper()==g_fruit.upper():
+                    print(Fore.GREEN+"******correct guess********")
+                    print(" ")
+                    score+=1
+                    time.sleep(1)
+                    clear_terminal()
+                else:
+                    print(Fore.RED+"try again")
+                    fails+=1
+                    time.sleep(1)
+                    clear_terminal()
+                c=c+1
+        except ValueError:
+            print(Fore.RED+"please enter a valid character")
+            time.sleep(1)
+            game.level_3()
+class scoreboard:
+    score_board={}
+    @staticmethod
+    def save_score():
+        with open('score_board.json', 'w') as f:
+            json.dump(scoreboard.score_board,f)
+    @staticmethod
+    def load_score():
+        try:
+            with open('score_board.json','r') as f:
+                scoreboard.score_board=json.load(f)
+        except FileNotFoundError:
+            scoreboard.score_board={}
+def start():
+    global score,fails
+    score=0
+    fails=0
+    clear_terminal()
+    print(Fore.YELLOW+"\tLEVEL--->1")
+    time.sleep(1)
+    clear_terminal()
+    game.level_1()
+    print(Fore.YELLOW+"\tLEVEL--->2")
+    time.sleep(1)
+    clear_terminal()
+    game.level_2()
+    print(Fore.YELLOW+"\tLEVEL--->3")
+    time.sleep(1)
+    clear_terminal()
+    game.level_3()
+    clear_terminal()
+    scoreboard.score_board[name]=score
+    scoreboard.save_score()
+    scoreboard.load_score()
+    print(Fore.MAGENTA+"\tscoreboard:\n")
+    sort_scoreboard={key: value for key, value in sorted(scoreboard.score_board.items(), key=lambda item: item[1],reverse=True)}
+    for index,n in enumerate(sort_scoreboard, start=1):
+        print(Fore.LIGHTBLACK_EX+f"{index} {n}--->\t{sort_scoreboard[n]}")
+    print(Fore.LIGHTBLUE_EX+f"numer of fails = {fails}")
+    play_again=input(Fore.CYAN+"\nplay again?(yes/no):").lower()
+    if play_again=="yes":
+        clear_terminal()
+        start_screen()
+    else:
+        clear_terminal()
+        print(Fore.RED+"\tGAME OVER")
+        print(Fore.RED+"  THANK YOU FOR PLAYING")
+        time.sleep(3)
+        main_start()
+def start_2():
+    scoreboard.load_score()
+    start_screen()
+#budget tracker
+def main_screen():
+    clear_terminal()
+    try:
+        a.show_expenses()
+        print(Fore.MAGENTA+"\n\t MAIN")
+        print(Fore.BLUE+"1. add expanses")
+        print(Fore.BLUE+"2. transaction history")
+        print(Fore.BLUE+"3. add category")
+        print(Fore.BLUE+"4. modify budget")
+        print(Fore.BLUE+"5. exit")
+        c1=int(input(Fore.CYAN+"\nenter the option: "))
+        if c1==1:
+            a.add_expenses()
+        elif c1==2:
+            a.transaction_history()
+        elif c1==3:
+            a.add_category()
+        elif c1==4:
+            a.modify_budget()
+        elif c1==5:
+            print(Fore.LIGHTBLACK_EX+"\nexiting the program...")
+            time.sleep(1)
+            main_start()
+        else:
+            print(Fore.RED+"please enter a valid number")
+    except ValueError:
+        print(Fore.RED+"please enter a valid choice")
+class storage():
+    def __init__(self):
+        self.con=sqlite3.connect("budget_tracker.db")
+        self.table()
+    def table(self):
+        self.cursor=self.con.cursor()
+        self.cursor.execute("""
+                       CREATE TABLE IF NOT EXISTS expenses(
+                       s_no INTEGER PRIMARY KEY AUTOINCREMENT,
+                       categories TEXT,
+                       money_spent INTEGER,
+                       date DATE,
+                       budget INTEGER
+                       )""")
+        self.con.commit()
+    def add_category(self):
+        clear_terminal()
+        self.show_expenses()
+        print("")
+        category1=input(Fore.CYAN+"enter the category:").strip().lower()
+        budget=int(input(Fore.CYAN+"enter the budget: "))
+        self.cursor.execute("""
+                            INSERT INTO expenses (categories,budget)
+                            VALUES (?,?)
+                            """,(category1,budget))
+        self.con.commit()
+        print(Fore.GREEN+"category added")
+        time.sleep(1)
+    def add_expenses(self):
+        clear_terminal()
+        self.show_expenses()
+        print("")
+        money=int(input(Fore.CYAN+"enter the amount(+/-): "))
+        today=date.today()
+        s1=int(input(Fore.CYAN+"enter the s_no: "))
+        self.cursor.execute("SELECT money_spent FROM expenses WHERE s_no = ?", (s1,))
+        result = self.cursor.fetchone()
+        if result:
+            current_money_spent = result[0]
+            new_money_spent = current_money_spent+money
+            self.cursor.execute("""
+                            UPDATE expenses
+                            SET money_spent=?,date=?
+                            WHERE s_no=?
+                            """,(new_money_spent,today,s1))
+            self.con.commit()
+            print(Fore.GREEN+"money added")
+        else:
+            print(Fore.RED+"No record found with the provided s_no")
+            time.sleep(1)
+    def show_expenses(self):
+        print("")
+        self.cursor.execute("SELECT * FROM expenses")
+        rows=self.cursor.fetchall()
+        print("Expenses:")
+        print(Fore.LIGHTBLACK_EX+"| s_no | category | money spent | date | budget |\n")
+        for row in rows:
+            print(row)
+        if not rows:
+            print(Fore.RED+"No expenses recorded.")
+        time.sleep(1)
+    def transaction_history(self):
+        clear_terminal()
+        date_input=input(Fore.LIGHTBLACK_EX+"enter the date:(yyyy-mm-dd): ")
+        self.cursor.execute("""SELECT * FROM expenses 
+                            WHERE date=?""",(date_input,))
+        rows=self.cursor.fetchall()
+        print(Fore.MAGENTA+"transaction history:")
+        for row in rows:
+            print(row)
+        choice=input(Fore.CYAN+"\nenter main for main menu: ").lower()
+        if choice=="main":
+            main_screen()
+        if not rows:
+            print(Fore.RED+"No transactions found for this date.")
+        time.sleep(2)
+    def modify_budget(self):
+        clear_terminal()
+        self.show_expenses()
+        print("")
+        budget=int(input(Fore.CYAN+"enter the budget: "))
+        s2=int(input(Fore.CYAN+"enter the s_no"))
+        self.cursor.execute("""
+                            UPDATE expenses
+                            SET budget=?
+                            WHERE s_no=?
+                            """,(budget,s2))
+        self.con.commit()
+        print(Fore.GREEN+"budget modified")
+        time.sleep(1)
+    def close(self):
+        self.con.close()
+a=storage()
+def start_3():
+    print(Fore.MAGENTA+"\twelcome to the budget tracker $$$$")
+    time.sleep(2)
+    main_screen()
+#main start
+def welcome():
+    clear_terminal()
+    print(Fore.MAGENTA+"\twelcome to the CLI applictaion")
+    time.sleep(2)   
+def main_start():
+    while True:
+        clear_terminal()
+        try:
+            print(Fore.MAGENTA+"\t Applications: \n")
+            print(Fore.BLUE+"1. Task Manager")
+            print(Fore.BLUE+"2. Guessing Game")
+            print(Fore.BLUE+"3. Budget Tracker")
+            print(Fore.BLUE+"4. exit")
+            choice=int(input(Fore.CYAN+"\nchoose the application: "))
+            if choice==1:
+                clear_terminal()
+                start_1()
+            elif choice==2:
+                clear_terminal()
+                start_2()
+            elif choice==3:
+                clear_terminal()
+                start_3()
+            elif choice==4:
+                clear_terminal()
+                print(Fore.BLACK+"\tExiting the application...\n\t     Thank you...!!!")
+                time.sleep(1) 
+                sys.exit()
+            else:
+                print(Fore.RED+"invalid selection")
+                time.sleep(1)
+        except ValueError:
+            print(Fore.RED+"invalid input")
+            time.sleep(1)
+welcome()
+main_start()

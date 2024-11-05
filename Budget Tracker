@@ -1,0 +1,134 @@
+import os
+import time
+import sqlite3
+from datetime import date
+def clear_terminal():
+    if os.name=="nt":
+        os.system("cls")
+    else:
+        os.system("clear")
+def main_screen():
+    clear_terminal()
+    try:
+        a.show_expenses()
+        print("\n\t MAIN")
+        print("1. add expanses")
+        print("2. transaction history")
+        print("2. add category")
+        print("4. modify budget")
+        print("5. exit")
+        c1=int(input("\nenter the option: "))
+        if c1==1:
+            a.add_expenses()
+        elif c1==2:
+            a.transaction_history()
+        elif c1==3:
+            a.add_category()
+        elif c1==4:
+            a.modify_budget()
+        elif c1==5:
+            print("\nexiting the program...")
+            time.sleep(1)
+            a.close()
+            exit()
+        else:
+            print("please enter a valid number")
+    except ValueError:
+        print("please enter a valid choice")
+class storage():
+    def __init__(self):
+        self.con=sqlite3.connect("budget_tracker.db")
+        self.table()
+    def table(self):
+        self.cursor=self.con.cursor()
+        self.cursor.execute("""
+                       CREATE TABLE IF NOT EXISTS expenses(
+                       s_no INTEGER PRIMARY KEY AUTOINCREMENT,
+                       categories TEXT,
+                       money_spent INTEGER,
+                       date DATE,
+                       budget INTEGER
+                       )""")
+        self.con.commit()
+    def add_category(self):
+        clear_terminal()
+        self.show_expenses()
+        print("")
+        category1=input("enter the category:").strip().lower()
+        budget=int(input("enter the budget: "))
+        self.cursor.execute("""
+                            INSERT INTO expenses (categories,budget)
+                            VALUES (?,?)
+                            """,(category1,budget))
+        self.con.commit()
+        print("category added")
+        time.sleep(1)
+    def add_expenses(self):
+        clear_terminal()
+        self.show_expenses()
+        print("")
+        money=int(input("enter the amount(+/-): "))
+        today=date.today()
+        s1=int(input("enter the s_no: "))
+        self.cursor.execute("SELECT money_spent FROM expenses WHERE s_no = ?", (s1,))
+        result = self.cursor.fetchone()
+        if result:
+            current_money_spent = result[0]
+            new_money_spent = current_money_spent+money
+            self.cursor.execute("""
+                            UPDATE expenses
+                            SET money_spent=?,date=?
+                            WHERE s_no=?
+                            """,(new_money_spent,today,s1))
+            self.con.commit()
+            print("money added")
+        else:
+            print("No record found with the provided s_no")
+            time.sleep(1)
+    def show_expenses(self):
+        print("")
+        self.cursor.execute("SELECT * FROM expenses")
+        rows=self.cursor.fetchall()
+        print("Expenses:")
+        print("| s_no | category | money spent | date | budget |\n")
+        for row in rows:
+            print(row)
+        if not rows:
+            print("No expenses recorded.")
+        time.sleep(1)
+    def transaction_history(self):
+        clear_terminal()
+        date_input=input("enter the date:(yyyy-mm-dd): ")
+        self.cursor.execute("""SELECT * FROM expenses 
+                            WHERE date=?""",(date_input,))
+        rows=self.cursor.fetchall()
+        print("transaction history:")
+        for row in rows:
+            print(row)
+        choice=input("\nenter main for main menu: ").lower()
+        if choice=="main":
+            main_screen()
+        if not rows:
+            print("No transactions found for this date.")
+        time.sleep(2)
+    def modify_budget(self):
+        clear_terminal()
+        self.show_expenses()
+        print("")
+        budget=int(input("enter the budget: "))
+        s2=int(input("enter the s_no"))
+        self.cursor.execute("""
+                            UPDATE expenses
+                            SET budget=?
+                            WHERE s_no=?
+                            """,(budget,s2))
+        self.con.commit()
+        print("budget modified")
+        time.sleep(1)
+    def close(self):
+        self.con.close()
+a=storage()
+print("\twelcome to the budget tracker")
+time.sleep(1)
+while True:
+    main_screen()

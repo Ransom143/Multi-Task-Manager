@@ -1,0 +1,197 @@
+import random
+import os
+import time
+import json
+n=0
+score=0
+alphabets=[]
+fruits=[]
+name=""
+fails=0
+def clear_terminal():
+    if os.name=="nt":
+        os.system("cls")
+    else:
+        os.system("clear")
+def start_screen():
+    global name
+    print("\twelcome to the game")
+    print("         .....loading.....")
+    time.sleep(1)
+    clear_terminal()
+    name=input("enter your name:").strip().lower()
+    clear_terminal()
+    level_selection()
+def level_selection():
+    try:
+        print("\tselect game mode")
+        print("1.easy")
+        print("2.medium")
+        print("3.hard")
+        choice=int(input("enter choice: "))
+        global n,alphabets,fruits
+        if choice==1:
+            n=1
+            alphabets=["A","B"]
+            fruits=["kiwi","apple"]
+            clear_terminal()
+            print("\tlevel--->easy")
+            time.sleep(2)
+            start()
+        elif choice==2:
+            n=2
+            alphabets=["A","B","C"]
+            fruits=["kiwi","apple","mango"]
+            clear_terminal()
+            print("level--->medium")
+            time.sleep(2)
+            start()
+        elif choice==3:
+            n=3
+            alphabets=["A","B","C","D"]
+            fruits=["kiwi","apple","mango","orange"]
+            clear_terminal()
+            print("level--->hard")
+            time.sleep(2)
+            start()
+        else:
+            print("invalid choice")
+            time.sleep(1)
+            start_screen()
+    except ValueError:
+        print("invalid input choice")
+        time.sleep(1)
+        start_screen()
+class game:
+    clear_terminal()
+    def level_1():
+        global score,fails
+        try:
+            print("\tlevel--->1")
+            print("\tguess the number in 3 chances")
+            a=0
+            while a<3:
+                print(f"\tguess between 0 to {n}")
+                print(f"score={score}")
+                num=int(input(f"{a+1}-->enter the choice: "))
+                g_num=random.randint(0,n)
+                if num==g_num:
+                    print("******correct guess********")
+                    print(" ")
+                    score+=1
+                    time.sleep(1)
+                    clear_terminal()
+                else:
+                    print("try again")
+                    fails+=1
+                    time.sleep(1)
+                    clear_terminal()
+                a=a+1
+        except ValueError:
+            print("please enter a valid number")
+            time.sleep(1)
+    def level_2():
+        global score,fails
+        try:
+            print("\tlevel--->2")
+            print("\tguess the alphabets in 3 chances")
+            b=0
+            while b<3:
+                print(f"\tguess between {alphabets}")
+                print(f"score={score}")
+                alpha=input(f"{b+1}-->enter the choice: ").upper()
+                g_alpha=random.choice(alphabets)
+                if alpha.upper()==g_alpha.upper():
+                    print("******correct guess********")
+                    print(" ")
+                    score+=1
+                    time.sleep(1)
+                    clear_terminal()
+                else:
+                    print("try again")
+                    fails+=1
+                    time.sleep(1)
+                    clear_terminal()
+                b=b+1
+        except ValueError:
+            print("please enter a valid character")
+            time.sleep(1)
+    def level_3():
+        global score,fails
+        try:
+            print("\tlevel--->3")
+            print("\tguess the fruits in  chances")
+            c=0
+            while c<3:
+                print(f"\tguess between {fruits}")
+                print(f"score={score}")
+                fruit=input(f"{c+1}-->enter the choice: ").upper()
+                g_fruit=random.choice(fruits)
+                if fruit.upper()==g_fruit.upper():
+                    print("******correct guess********")
+                    print(" ")
+                    score+=1
+                    time.sleep(1)
+                    clear_terminal()
+                else:
+                    print("try again")
+                    fails+=1
+                    time.sleep(1)
+                    clear_terminal()
+                c=c+1
+        except ValueError:
+            print("please enter a valid character")
+            time.sleep(1)
+class scoreboard:
+    score_board={}
+    @staticmethod
+    def save_score():
+        with open('score_board.json', 'w') as f:
+            json.dump(scoreboard.score_board,f)
+    @staticmethod
+    def load_score():
+        try:
+            with open('score_board.json','r') as f:
+                scoreboard.score_board=json.load(f)
+        except FileNotFoundError:
+            scoreboard.score_board={}
+def start():
+    global score,fails
+    score=0
+    fails=0
+    clear_terminal()
+    print("\tLEVEL--->1")
+    time.sleep(1)
+    clear_terminal()
+    game.level_1()
+    print("\tLEVEL--->2")
+    time.sleep(1)
+    clear_terminal()
+    game.level_2()
+    print("\tLEVEL--->3")
+    time.sleep(1)
+    clear_terminal()
+    game.level_3()
+    clear_terminal()
+    scoreboard.score_board[name]=score
+    scoreboard.save_score()
+    scoreboard.load_score()
+    print("\tscoreboard:\n")
+    sort_scoreboard={key: value for key, value in sorted(scoreboard.score_board.items(), key=lambda item: item[1],reverse=True)}
+    for index,n in enumerate(sort_scoreboard, start=1):
+        print(f"{index} {n}--->\t{sort_scoreboard[n]}")
+    print(f"numer of fails = {fails}")
+    play_again=input("\nplay again?(yes/no):").lower()
+    if play_again=="yes":
+        clear_terminal()
+        start_screen()
+    else:
+        clear_terminal()
+        print("\tGAME OVER")
+        print("  THANK YOU FOR PLAYING")
+        time.sleep(3)
+        exit()
+def start_2():
+    scoreboard.load_score()
+    start_screen()
+start_2()

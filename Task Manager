@@ -1,0 +1,243 @@
+import os
+import time
+import sqlite3
+def clear_terminal():
+    if os.name == "nt":
+        os.system("cls")
+    else:
+        os.system("clear")
+class Database:
+    def __init__(self):
+        self.connection = sqlite3.connect('task_manager.db')
+        self.create_tables()
+    def create_tables(self):
+        with self.connection:
+            self.connection.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    password TEXT NOT NULL
+                )''')
+            self.connection.execute('''
+                CREATE TABLE IF NOT EXISTS tasks (
+                    user_id TEXT,
+                    task TEXT,
+                    priority INTEGER DEFAULT 0,
+                    deadline TEXT,
+                    FOREIGN KEY (user_id) REFERENCES users (id)
+                )''')
+    def save_user(self,user_id,password):
+        with self.connection:
+            self.connection.execute("""INSERT INTO users (id, password) 
+                                    VALUES (?, ?)""",(user_id,password))
+    def get_user(self,user_id):
+        cursor=self.connection.cursor()
+        cursor.execute("""SELECT password FROM users 
+                       WHERE id = ?""",(user_id,))
+        return cursor.fetchone()
+    def save_task(self,user_id,task,priority=0,deadline=None):
+        with self.connection:
+            self.connection.execute("""INSERT INTO tasks (user_id, task, priority, deadline)
+                                     VALUES (?, ?, ?, ?)""", 
+                                    (user_id,task,priority,deadline))
+    def get_tasks(self,user_id):
+        cursor=self.connection.cursor()
+        cursor.execute("""SELECT task, priority, deadline FROM tasks 
+                       WHERE user_id = ? ORDER BY priority DESC""",(user_id,))
+        return cursor.fetchall()
+    def remove_task(self,user_id,task):
+        with self.connection:
+            self.connection.execute("""DELETE FROM tasks 
+                                    WHERE user_id = ? AND task = ?""",(user_id,task))
+    def update_task_priority(self,user_id,task,priority):
+        with self.connection:
+            self.connection.execute("""UPDATE tasks SET priority = ? 
+                                    WHERE user_id = ? AND task = ?""",(priority, user_id, task))
+    def mark_task_done(self,user_id,task):
+        with self.connection:
+            self.connection.execute("""UPDATE tasks SET task = ? 
+                                    WHERE user_id = ? AND task = ?""",(task+" (Done)",user_id, task))
+db = Database()
+class Authentication:
+    def interface(self):
+        clear_terminal()
+        print("\t___main___")
+        choice=input("Login or create account?: (login, create):\nenter-----> ")
+        if choice.lower()=="login":
+            return self.login()
+        elif choice.lower()=="create":
+            return self.create()
+        else:
+            return self.interface()
+    def login(self):
+        clear_terminal()
+        print("\n\t___login___")
+        user_id=input("Enter the ID: ")
+        password=input("Enter the password: ")
+        user=db.get_user(user_id)
+        if user and user[0]==password:
+            print("Login successful")
+            time.sleep(1)
+            clear_terminal()
+            print("\t___welcome to the task manager___")
+            return main(user_id)
+        else:
+            print("Invalid ID or password, please try again")
+            time.sleep(1)
+            return self.interface()
+    def create(self):
+        clear_terminal()
+        print("\t___create account___")
+        print("Please use characters, alphabets, numbers only")
+        user_id=input("Enter the ID: ")
+        if not user_id.isalnum():
+            print("Invalid input, please try again: (please use characters, alphabets, numbers only)")
+            time.sleep(1)
+            return self.create()
+        password=input("Enter the password: ")
+        if not password.isalnum():
+            print("Invalid input, please try again: (please use characters, alphabets, numbers only)")
+            time.sleep(1)
+            return self.create()
+        db.save_user(user_id, password)
+        print("Account created successfully")
+        time.sleep(1)
+        return self.login()
+class Tasks(Authentication):
+    def __init__(self,user_id):
+        self.id=user_id
+    def include(self):
+        clear_terminal()
+        print("\t___include tasks:___")
+        print("**use 'end' to stop entering**\n")
+        while True:
+            task=input("Enter the task: ").lower()
+            if task=="end":
+                clear_terminal()
+                self.display()
+                print(" ")
+                break
+            else:
+                deadline=input("Enter the deadline (YYYY-MM-DD) or press Enter to skip: ")
+                db.save_task(self.id,task,deadline=deadline)
+        return main(self.id)
+    def remove(self):
+        clear_terminal()
+        self.display()
+        print(" ")
+        try:
+            index=int(input("Input the task index number to remove or type 0 to cancel: ")) - 1
+            tasks=db.get_tasks(self.id)
+            if 0 <= index < len(tasks):
+                task_to_remove=tasks[index][0]
+                db.remove_task(self.id,task_to_remove)
+                print(f"{task_to_remove} : Task removed successfully")
+            elif index==-1:
+                print("Operation cancelled.")
+            else:
+                print("Invalid index.")
+        except ValueError:
+            print("Please enter a valid number.")
+        time.sleep(1)
+        return main(self.id)
+    def display(self):
+        clear_terminal()
+        tasks=db.get_tasks(self.id)
+        if not tasks:
+            print("No tasks remaining")
+        else:
+            print("Tasks:")
+            for index,(task, priority, deadline) in enumerate(tasks,start=1):
+                deadline_str=f" (Deadline: {deadline})" if deadline else ""
+                print(f"{index}---> {task} (Priority: {priority}){deadline_str}")
+    def mark(self):
+        self.display()
+        print(" ")
+        try:
+            index=int(input("Input the task index number to mark as done: "))-1
+            tasks=db.get_tasks(self.id)
+            if 0 <= index < len(tasks):
+                task_to_mark=tasks[index][0]
+                db.mark_task_done(self.id,task_to_mark)
+                print("Task marked as done successfully.")
+            else:
+                print("Invalid index.")
+        except ValueError:
+            print("Please enter a valid number.")
+        time.sleep(1)
+        return main(self.id)
+    def prioritize(self):
+        clear_terminal()
+        self.display()
+        print(" ")
+        try:
+            index=int(input("Input the task index number to prioritize: "))-1
+            tasks=db.get_tasks(self.id)
+            if 0 <= index < len(tasks):
+                priority_level=int(input("Enter new priority level (1-5): "))
+                if 1 <= priority_level <= 5:
+                    task_to_prioritize=tasks[index][0]
+                    db.update_task_priority(self.id,task_to_prioritize,priority_level)
+                    print("Task priority updated successfully.")
+                else:
+                    print("Priority level must be between 1 and 5.")
+            else:
+                print("Invalid index.")
+        except ValueError:
+            print("Please enter a valid number.")
+        time.sleep(1)
+        return main(self.id)
+    def search(self):
+        clear_terminal()
+        try:
+            search_term=input("Enter the keyword to search for tasks: ").lower()
+            tasks=db.get_tasks(self.id)
+            matching_tasks=[task for task in tasks if search_term in task[0].lower()]
+            if not matching_tasks:
+                print("No tasks found matching the keyword.")
+            else:
+                print("Matching tasks:")
+            for index,(task,priority,deadline) in enumerate(matching_tasks,start=1):
+                deadline_str=f" (Deadline: {deadline})" if deadline else ""
+                print(f"{index}---> {task} (Priority: {priority}){deadline_str}")
+            a=int(input("enter 0 for main: "))
+            if a==0:
+                return main(self.id)
+            else:
+                print("invalid input")
+        except:
+            print("invalid input")
+def main(user_id):
+    task_manager=Tasks(user_id)
+    while True:
+        task_manager.display()
+        print(" ")
+        print("\nChoose the options:")
+        print("1--->Include a new task")
+        print("2--->Remove a task")
+        print("3--->Mark a task")
+        print("4--->Prioritize a task")
+        print("5--->search a task")
+        print("6--->Exit")
+        try:
+            choice=int(input("\nSelect a choice:\nenter-----> "))
+            if choice==1:
+                return task_manager.include()
+            elif choice==2:
+                return task_manager.remove()
+            elif choice==3:
+                return task_manager.mark()
+            elif choice==4:
+                return task_manager.prioritize()
+            elif choice==5:
+                return task_manager.search()
+            elif choice==6:
+                start()
+            else:
+                print("Invalid input, please choose again")
+                time.sleep(1)
+        except ValueError:
+            print("Please enter a valid number.")
+            time.sleep(1)
+def start():
+    Authentication().interface()
+start()
